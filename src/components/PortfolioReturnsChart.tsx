@@ -1,3 +1,5 @@
+'use client'
+
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -9,16 +11,21 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 import * as XLSX from 'xlsx';
 import { Calendar, ChevronDown } from 'lucide-react';
 
+interface DataPoint {
+  date: Date;
+  [key: string]: Date | number;
+}
+
 const PortfolioReturnsChart = () => {
-  const [rawData, setRawData] = useState([]);
-  const [displayData, setDisplayData] = useState([]);
-  const [portfolios, setPortfolios] = useState([]);
-  const [selectedPortfolios, setSelectedPortfolios] = useState([]);
-  const [dateRange, setDateRange] = useState([0, 100]); // Percentage of total date range
+  const [rawData, setRawData] = useState<DataPoint[]>([]);
+  const [displayData, setDisplayData] = useState<DataPoint[]>([]);
+  const [portfolios, setPortfolios] = useState<string[]>([]);
+  const [selectedPortfolios, setSelectedPortfolios] = useState<string[]>([]);
+  const [dateRange, setDateRange] = useState([0, 100]);
   const [showGrid, setShowGrid] = useState(true);
   const [showBaseline, setShowBaseline] = useState(true);
-  const [valueType, setValueType] = useState('absolute'); // 'absolute' or 'relative'
-  const [smoothing, setSmoothing] = useState(1); // Number of days for moving average
+  const [valueType, setValueType] = useState<'absolute' | 'relative'>('absolute');
+  const [smoothing, setSmoothing] = useState(1);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -53,9 +60,9 @@ const PortfolioReturnsChart = () => {
         console.log('Data parsed successfully, processing...');
 
         // Extract portfolio names
-        const portfolioNames = jsonData.slice(1)
+        const portfolioNames = (jsonData.slice(1) as any[][])
           .map(row => row[0])
-          .filter(name => name && typeof name === 'string');
+          .filter((name): name is string => name && typeof name === 'string');
         
         if (!portfolioNames.length) {
           throw new Error('No portfolio names found in the data');
@@ -65,44 +72,43 @@ const PortfolioReturnsChart = () => {
         setSelectedPortfolios(portfolioNames);
 
         // Process data
-        const dates = jsonData[0].slice(1);
+        const dates = (jsonData[0] as any[]).slice(1);
         const processedData = dates.map((date, index) => {
           if (!date) return null;
           
-          const dataPoint = {
+          const dataPoint: DataPoint = {
             date: date instanceof Date ? date : new Date(date),
           };
           
           portfolioNames.forEach((portfolio, portfolioIndex) => {
-            const value = jsonData[portfolioIndex + 1][index + 1];
+            const value = (jsonData[portfolioIndex + 1] as any[])[index + 1];
             if (typeof value === 'number' && !isNaN(value)) {
               dataPoint[portfolio] = value;
               // Calculate relative values (percentage change from start)
+              const startValue = (jsonData[portfolioIndex + 1] as any[])[1];
               if (index === 0) {
                 dataPoint[`${portfolio}_relative`] = 0;
               } else {
-                const startValue = jsonData[portfolioIndex + 1][1];
                 dataPoint[`${portfolio}_relative`] = ((value - startValue) / startValue) * 100;
               }
             }
           });
           
           return dataPoint;
-        }).filter(item => item !== null);
+        }).filter((item): item is DataPoint => item !== null);
 
         console.log('Data processed successfully');
         setRawData(processedData);
         setDisplayData(processedData);
       } catch (error) {
         console.error('Error loading data:', error);
-        setError(error.message || 'An unknown error occurred while loading data');
+        setError((error as Error).message || 'An unknown error occurred while loading data');
       }
     };
 
     loadData();
   }, []);
 
-  // Update display data when filters change
   useEffect(() => {
     if (!rawData.length) return;
 
@@ -116,16 +122,24 @@ const PortfolioReturnsChart = () => {
     // Apply smoothing (moving average)
     if (smoothing > 1) {
       filtered = filtered.map((point, idx) => {
-        const result = { date: point.date };
+        const result: DataPoint = { date: point.date };
         const window = filtered.slice(Math.max(0, idx - smoothing + 1), idx + 1);
         
         portfolios.forEach(portfolio => {
           // Calculate smoothed values for both absolute and relative
-          const absValues = window.map(w => w[portfolio]).filter(v => typeof v === 'number');
-          result[portfolio] = absValues.reduce((a, b) => a + b, 0) / absValues.length;
+          const absValues = window
+            .map(w => w[portfolio])
+            .filter((v): v is number => typeof v === 'number');
+          if (absValues.length) {
+            result[portfolio] = absValues.reduce((a, b) => a + b, 0) / absValues.length;
+          }
           
-          const relValues = window.map(w => w[`${portfolio}_relative`]).filter(v => typeof v === 'number');
-          result[`${portfolio}_relative`] = relValues.reduce((a, b) => a + b, 0) / relValues.length;
+          const relValues = window
+            .map(w => w[`${portfolio}_relative`])
+            .filter((v): v is number => typeof v === 'number');
+          if (relValues.length) {
+            result[`${portfolio}_relative`] = relValues.reduce((a, b) => a + b, 0) / relValues.length;
+          }
         });
         
         return result;
@@ -133,18 +147,31 @@ const PortfolioReturnsChart = () => {
     }
 
     setDisplayData(filtered);
-  }, [rawData, dateRange, smoothing]);
+  }, [rawData, dateRange, smoothing, portfolios]);
 
-  // Color scheme for different portfolios
   const colors = ['#2563eb', '#16a34a', '#ea580c', '#9333ea'];
 
-  const togglePortfolio = (portfolio) => {
+  const togglePortfolio = (portfolio: string) => {
     setSelectedPortfolios(prev => 
       prev.includes(portfolio)
         ? prev.filter(p => p !== portfolio)
         : [...prev, portfolio]
     );
   };
+
+  if (error) {
+    return (
+      <Card className="w-full">
+        <CardHeader>
+          <CardTitle>Error Loading Data</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-red-500">{error}</p>
+          <p>Please check the console for more details.</p>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card className="w-full">
@@ -253,7 +280,7 @@ const PortfolioReturnsChart = () => {
                     >
                       {portfolio.replace('Fondos ', '')}
                     </Button>
-                ))}
+                  ))}
               </div>
             </div>
 
@@ -297,7 +324,7 @@ const PortfolioReturnsChart = () => {
                     >
                       {portfolio}
                     </Button>
-                ))}
+                  ))}
               </div>
             </div>
           </div>
@@ -317,7 +344,7 @@ const PortfolioReturnsChart = () => {
                 <XAxis 
                   dataKey="date" 
                   tick={{ fontSize: 12 }}
-                  tickFormatter={(date) => {
+                  tickFormatter={(date: Date) => {
                     if (!(date instanceof Date)) return '';
                     return date.toLocaleDateString('en-GB', { 
                       month: 'short',
@@ -328,13 +355,13 @@ const PortfolioReturnsChart = () => {
                 <YAxis 
                   tick={{ fontSize: 12 }}
                   domain={['auto', 'auto']}
-                  tickFormatter={(value) => valueType === 'absolute' 
+                  tickFormatter={(value: number) => valueType === 'absolute' 
                     ? value.toFixed(0)
                     : `${value.toFixed(1)}%`
                   }
                 />
                 <Tooltip
-                  labelFormatter={(date) => {
+                  labelFormatter={(date: Date) => {
                     if (!(date instanceof Date)) return '';
                     return date.toLocaleDateString('en-GB', {
                       day: 'numeric',
@@ -342,7 +369,7 @@ const PortfolioReturnsChart = () => {
                       year: 'numeric'
                     });
                   }}
-                  formatter={(value, name) => [
+                  formatter={(value: number, name: string) => [
                     valueType === 'absolute' 
                       ? value.toFixed(2)
                       : `${value.toFixed(2)}%`,
@@ -378,19 +405,4 @@ const PortfolioReturnsChart = () => {
   );
 };
 
-if (error) {
-  return (
-    <Card className="w-full">
-      <CardHeader>
-        <CardTitle>Error Loading Data</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <p className="text-red-500">{error}</p>
-        <p>Please check the console for more details.</p>
-      </CardContent>
-    </Card>
-  );
-}
-
 export default PortfolioReturnsChart;
-
