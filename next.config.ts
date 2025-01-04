@@ -2,8 +2,14 @@ import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
   images: {
-    domains: ['i0.wp.com']
-  }
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'i0.wp.com',
+        pathname: '/**',
+      },
+    ],
+  },
 }
 
-export default nextConfig;
+export default nextConfig
