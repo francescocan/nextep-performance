@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+**/node_modules/
+.pnp
+.pnp.js
+
+# Build
+.next/
+out/
+build/
+dist/
+
+# Misc
+.DS_Store
+*.pem
+.env*
+.vercel
